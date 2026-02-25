@@ -1,0 +1,52 @@
+name: safety_guardian
+description: "AI-Powered Public Safety And Incident Reporting Platform"
+publish_to: 'none' 
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase - Core (Required)
+  firebase_core: ^2.24.2
+  
+  # Firebase - Authentication (For Login/Signup)
+  firebase_auth: ^4.16.0
+  
+  # Firebase - Database (For storing reports)
+  cloud_firestore: ^4.15.5
+  
+  # UI Components - Material 3 Design
+  google_fonts: ^6.1.0
+  iconsax: ^0.0.8
+  flutter_svg: ^2.0.9
+  
+  # Forms & Validation
+  email_validator: ^2.1.17
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # Local Storage
+  shared_preferences: ^2.2.2
+  
+  # Utilities
+  image_picker: ^1.0.5
+  permission_handler: ^11.3.0
+  
+  # For CNIC validation
+  intl: ^0.18.1
+  
+  # Cupertino Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
