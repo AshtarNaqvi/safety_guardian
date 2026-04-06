@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import '../widgets/custom_button.dart';
+import 'package:iconsax/iconsax.dart';
 
 class CompanionModeScreen extends StatefulWidget {
   const CompanionModeScreen({super.key});

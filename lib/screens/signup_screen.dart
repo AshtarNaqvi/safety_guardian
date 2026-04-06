@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
 

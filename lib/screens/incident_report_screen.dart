@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:image_picker/image_picker.dart';
 import '../widgets/custom_button.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import '../services/storage_service.dart';
+import 'package:dio/dio.dart';
 
 class IncidentReportScreen extends StatefulWidget {
   const IncidentReportScreen({super.key});
@@ -12,6 +17,30 @@ class IncidentReportScreen extends StatefulWidget {
 }
 
 class _IncidentReportScreenState extends State<IncidentReportScreen> {
+  Future<String?> uploadToImgBB(File imageFile) async {
+    try {
+      String apiKey = '3bf75075acddf4b14502a0d9908aef85';
+
+      String url = 'https://api.imgbb.com/1/upload?key=$apiKey';
+
+      FormData formData = FormData.fromMap({
+        'image': await MultipartFile.fromFile(imageFile.path),
+      });
+
+      Response response = await Dio().post(url, data: formData);
+
+      if (response.statusCode == 200) {
+        return response.data['data']['url'];
+      }
+      return null;
+    } catch (e) {
+      print('Upload error: $e');
+      return null;
+    }
+  }
+
+  final StorageService _storage = StorageService();
+  bool _isUploading = false;
   // Controllers
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
@@ -166,7 +195,7 @@ class _IncidentReportScreenState extends State<IncidentReportScreen> {
   }
 
   // Submit report
-  void _submitReport() {
+  void _submitReport() async {
     if (_formKey.currentState!.validate()) {
       if (_selectedCategory == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -178,61 +207,74 @@ class _IncidentReportScreenState extends State<IncidentReportScreen> {
         return;
       }
 
-      if (_selectedDate == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please select date of incident'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
       setState(() => _isLoading = true);
 
-      // Simulate submission
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() => _isLoading = false);
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) throw Exception('Not logged in');
 
-        // Show success dialog
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Icon(
-              Icons.check_circle,
-              color: Colors.green,
-              size: 60,
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Report Submitted!',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Your incident report has been submitted successfully.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context); // Close dialog
-                  Navigator.pop(context); // Go back
-                },
-                child: const Text('OK'),
-              ),
-            ],
+        // Get location
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+
+        // UPLOAD IMAGES TO CLOUDINARY
+        List<String> imageUrls = [];
+        if (_selectedImages.isNotEmpty) {
+          for (File image in _selectedImages) {
+            String? url = await uploadToImgBB(image);
+            if (url != null) {
+              imageUrls.add(url);
+            }
+          }
+        }
+
+        // Save to Firestore
+        await FirebaseFirestore.instance.collection('reports').add({
+          'userId': user.uid,
+          'userEmail': user.email,
+          'category': _selectedCategory,
+          'title': _titleController.text.trim(),
+          'description': _descriptionController.text.trim(),
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'address': _locationController.text.trim(),
+          'date': _selectedDate != null
+              ? Timestamp.fromDate(_selectedDate!)
+              : null,
+          'time': _selectedTime?.format(context) ?? '',
+          'isAnonymous': _isAnonymous,
+          'images': imageUrls,
+          'status': 'pending',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Report submitted!'),
+            backgroundColor: Colors.green,
           ),
         );
-      });
+
+        // Clear form
+        _titleController.clear();
+        _descriptionController.clear();
+        _locationController.clear();
+        setState(() {
+          _selectedCategory = null;
+          _selectedDate = null;
+          _selectedTime = null;
+          _selectedImages.clear();
+        });
+
+        Navigator.pop(context);
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
+        );
+      } finally {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -630,11 +672,11 @@ class _IncidentReportScreenState extends State<IncidentReportScreen> {
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
-                                    'Faces will be blurred',
+                                    'Optional',
                                     style: TextStyle(
-                                      fontSize: 10,
+                                      fontSize: 12,
                                       color: Colors.orange.shade800,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ),
@@ -642,7 +684,7 @@ class _IncidentReportScreenState extends State<IncidentReportScreen> {
                             ),
                             const SizedBox(height: 10),
                             const Text(
-                              'Upload photos or videos as evidence. Faces will be automatically blurred for privacy.',
+                              'Upload photos or videos as evidence.',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey,
@@ -772,7 +814,7 @@ class _IncidentReportScreenState extends State<IncidentReportScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'Your identity is protected. Any faces in uploaded media will be automatically blurred.',
+                                'Your identity is protected.',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.grey.shade700,
@@ -813,10 +855,6 @@ class _IncidentReportScreenState extends State<IncidentReportScreen> {
                         ),
                         SizedBox(height: 15),
                         Text('Submitting report...'),
-                        Text(
-                          'Faces are being blurred',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
                       ],
                     ),
                   ),
