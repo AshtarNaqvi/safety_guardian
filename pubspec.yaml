@@ -40,9 +40,16 @@ dependencies:
   # Evidence Capture
   camera: ^0.10.5
   path_provider: ^2.1.0
-  url_launcher: ^6.3.2
   saver_gallery: ^4.1.1
   flutter_foreground_task: ^9.2.2
+  telephony: ^0.2.0
+  phone_state: ^3.0.0
+  
+  # SOS Module (ONLY url_launcher)
+  url_launcher: ^6.3.2
+
+  #For atomatic calling 
+  direct_caller_sim_choice: ^1.0.5
 
 dev_dependencies:
   flutter_test:

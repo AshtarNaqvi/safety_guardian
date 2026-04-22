@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import '../widgets/custom_button.dart';
+import '../services/sos_service.dart';
+import '../services/call_handler_service.dart';
+import 'manage_contacts_screen.dart';
 
 class EmergencySOSScreen extends StatefulWidget {
   const EmergencySOSScreen({super.key});
@@ -9,35 +12,53 @@ class EmergencySOSScreen extends StatefulWidget {
   State<EmergencySOSScreen> createState() => _EmergencySOSScreenState();
 }
 
-class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTickerProviderStateMixin {
+class _EmergencySOSScreenState extends State<EmergencySOSScreen>
+    with SingleTickerProviderStateMixin {
   // Animation for SOS button
   late AnimationController _pulseAnimation;
   late Animation<double> _pulseScale;
-  
-  // State variables
+
+  // State variables - ONLY ONE sosService
+  final SosService _sosService = SosService();
+  final CallHandlerService _callHandlerService = CallHandlerService();
+
   bool _isEmergencyActive = false;
   bool _isLocationSharing = false;
   bool _isCalling = false;
+  // Contacts for UI display
+  List<Map<String, dynamic>> _trustedContacts = [
+    {
+      'name': 'Mother',
+      'phone': '+92 300 1234567',
+      'status': 'waiting',
+      'called': false,
+    },
+    {
+      'name': 'Father',
+      'phone': '+92 321 7654321',
+      'status': 'waiting',
+      'called': false,
+    },
+    {
+      'name': 'Brother',
+      'phone': '+92 345 9876543',
+      'status': 'waiting',
+      'called': false,
+    },
+  ];
   String _emergencyStatus = 'Ready';
   Color _statusColor = Colors.green;
-  
-  // Trusted contacts list
-  List<Map<String, dynamic>> _trustedContacts = [
-    {'name': 'Mother', 'phone': '+92 300 1234567', 'status': 'waiting', 'called': false},
-    {'name': 'Father', 'phone': '+92 321 7654321', 'status': 'waiting', 'called': false},
-    {'name': 'Brother', 'phone': '+92 345 9876543', 'status': 'waiting', 'called': false},
-  ];
 
   @override
   void initState() {
     super.initState();
-    
+
     // Setup pulse animation for SOS button
     _pulseAnimation = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     )..repeat(reverse: true);
-    
+
     _pulseScale = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _pulseAnimation, curve: Curves.easeInOut),
     );
@@ -46,98 +67,28 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
   @override
   void dispose() {
     _pulseAnimation.dispose();
+    _callHandlerService.stopListening();
     super.dispose();
   }
 
   // Activate emergency mode
-  void _activateEmergency() {
+  void _activateEmergency() async {
     setState(() {
       _isEmergencyActive = true;
+      _isLocationSharing = true;
       _isCalling = true;
       _emergencyStatus = 'EMERGENCY ACTIVE';
       _statusColor = Colors.red;
     });
 
-    // Simulate calling police (15)
-    Future.delayed(const Duration(seconds: 1), () {
-      setState(() {
-        _isCalling = false;
-      });
-      
-      // Show police call dialog
-      _showCallDialog('Police Emergency (15)', 'Calling police...');
-      
-      // Start calling trusted contacts one by one
-      _callTrustedContacts();
-    });
-  }
+    // Start auto-reject handler
+    _callHandlerService.startListening(true);
 
-  // Simulate calling trusted contacts sequentially
-  void _callTrustedContacts() async {
-    for (int i = 0; i < _trustedContacts.length; i++) {
-      await Future.delayed(const Duration(seconds: 2));
-      
-      setState(() {
-        _trustedContacts[i]['called'] = true;
-        _trustedContacts[i]['status'] = 'calling';
-      });
-
-      // Show call dialog for each contact
-      _showCallDialog(_trustedContacts[i]['name'], _trustedContacts[i]['phone']);
-
-      await Future.delayed(const Duration(seconds: 2));
-      
-      setState(() {
-        _trustedContacts[i]['status'] = 'no_answer';
-      });
-    }
+    // Start REAL SOS (calls and SMS) - Trusted contacts first, Police last
+    await _sosService.startSos();
 
     // After all contacts tried, show response options
     _showResponseOptions();
-  }
-
-  // Show call dialog
-  void _showCallDialog(String contact, String details) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: const Icon(
-          Iconsax.call,
-          color: Colors.red,
-          size: 50,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              contact,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              details,
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 20),
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    // Auto close dialog after 2 seconds
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pop(context);
-    });
   }
 
   // Show response options after emergency
@@ -146,16 +97,11 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Are you safe?',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -250,9 +196,13 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
         _emergencyStatus = 'You are safe';
         _statusColor = Colors.green;
         _isEmergencyActive = false;
+        _isLocationSharing = false;
+        _callHandlerService.setEmergencyMode(false);
+        _sosService.stopSos();
       } else {
         _emergencyStatus = 'HELP REQUIRED';
         _statusColor = Colors.red;
+        _callHandlerService.setEmergencyMode(true);
       }
     });
 
@@ -260,7 +210,7 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          status == 'safe' 
+          status == 'safe'
               ? 'Your contacts have been notified you are safe'
               : 'Emergency services alerted. Help is on the way!',
         ),
@@ -278,8 +228,8 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          _isLocationSharing 
-              ? 'Live location sharing activated' 
+          _isLocationSharing
+              ? 'Live location sharing activated'
               : 'Location sharing stopped',
         ),
         backgroundColor: _isLocationSharing ? Colors.green : Colors.orange,
@@ -288,63 +238,6 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
   }
 
   // Add new trusted contact
-  void _addContact() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: const Text('Add Trusted Contact'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Name',
-                prefixIcon: const Icon(Iconsax.user),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Phone Number',
-                prefixIcon: const Icon(Iconsax.call),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Contact added successfully'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2563EB),
-            ),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -397,7 +290,9 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
-                                _isEmergencyActive ? Icons.warning : Icons.check_circle,
+                                _isEmergencyActive
+                                    ? Icons.warning
+                                    : Icons.check_circle,
                                 color: _statusColor,
                                 size: 30,
                               ),
@@ -491,10 +386,7 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
                                   spreadRadius: 10,
                                 ),
                               ],
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 4,
-                              ),
+                              border: Border.all(color: Colors.white, width: 4),
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -574,7 +466,9 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
                           icon: Icons.location_on,
                           color: Colors.green,
                           title: 'Live Location',
-                          subtitle: _isLocationSharing ? 'Sharing' : 'Not sharing',
+                          subtitle: _isLocationSharing
+                              ? 'Sharing'
+                              : 'Not sharing',
                           isActive: _isLocationSharing,
                         ),
                       ],
@@ -604,18 +498,15 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Iconsax.add),
-                              onPressed: _addContact,
-                              color: const Color(0xFF2563EB),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 10),
-                        ..._trustedContacts.map((contact) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _buildContactRow(contact),
-                        )),
+                        ..._trustedContacts.map(
+                          (contact) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _buildContactRow(contact),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -668,13 +559,13 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
                 // Location Toggle Button
                 if (_isEmergencyActive)
                   CustomButton(
-                    text: _isLocationSharing 
-                        ? 'Stop Sharing Location' 
+                    text: _isLocationSharing
+                        ? 'Stop Sharing Location'
                         : 'Share Live Location',
                     onPressed: _toggleLocationSharing,
                     color: _isLocationSharing ? Colors.orange : Colors.green,
                   ),
-                
+
                 const SizedBox(height: 20),
               ],
             ),
@@ -777,21 +668,21 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: contact['called'] 
+            backgroundColor: contact['called']
                 ? contact['status'] == 'no_answer'
-                    ? Colors.orange.shade100
-                    : Colors.green.shade100
+                      ? Colors.orange.shade100
+                      : Colors.green.shade100
                 : Colors.blue.shade100,
             child: Icon(
               contact['called']
                   ? contact['status'] == 'no_answer'
-                      ? Icons.phone_missed
-                      : Icons.check
+                        ? Icons.phone_missed
+                        : Icons.check
                   : Icons.person,
               color: contact['called']
                   ? contact['status'] == 'no_answer'
-                      ? Colors.orange
-                      : Colors.green
+                        ? Colors.orange
+                        : Colors.green
                   : Colors.blue,
               size: 20,
             ),
@@ -803,26 +694,18 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
               children: [
                 Text(
                   contact['name'],
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 Text(
                   contact['phone'],
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
             ),
           ),
           if (contact['called'])
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 4,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: contact['status'] == 'no_answer'
                     ? Colors.orange.shade100
@@ -867,10 +750,7 @@ class _EmergencySOSScreenState extends State<EmergencySOSScreen> with SingleTick
               ),
               Text(
                 subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ],
           ),
